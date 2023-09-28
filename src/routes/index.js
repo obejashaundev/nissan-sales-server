@@ -2,6 +2,7 @@
 const { Router } = require('express')
 const jwt = require('jsonwebtoken')
 const bcrypt = require('bcrypt')
+const fs = require('fs')
 // #endregion
 
 // #region Initialize router and data models
@@ -21,11 +22,20 @@ let responseError = (req, res) => {
 let credentialValidation = (req, res, next) => {
     let { email, password } = req.body
     try {
-        if (!email) {
-            throw 'The email property is not defined'
+        if (!(email && password)) {
+            throw 'All fields must be completed'
         }
-        if (!password) {
-            throw 'The password property is not defined'
+        next()
+    } catch (err) {
+        req.message = err
+        responseError(req, res)
+    }
+}
+let dataValidation = (req, res, next) => {
+    let { names, firstLastname, secondLastname, phone, email, password } = req.body
+    try {
+        if (!(names && firstLastname && secondLastname && phone && email && password)) {
+            throw 'All fields must be completed'
         }
         next()
     } catch (err) {
@@ -152,15 +162,15 @@ router.get('/private-tasks', checkToken, async (req, res, next) => {
 router.get('/roles', checkToken, async (req, res, next) => {
     try {
         let userId = req.userId
-        let user = await User.findById(userId)
+        let user = await User.findById(userId).populate('rol')
         if (!user) {
             throw 'The requesting user could not be found'
         }
-        let rol = await Rol.findById(user.rol)
-        if (rol.name != "MASTER") {
+        let rolName = user.rol.name
+        if (!(rolName.includes(enumRoles.MASTER) || rolName.includes(enumRoles.ADMINISTRADOR))) {
             throw 'Unauthorize request'
         }
-        let data = Rol.find({ isActive: true, isRemoved: false })
+        let data = await Rol.find({ isActive: true, isRemoved: false })
         let message = 'List of available roles'
         let response = new JSONResponse({ data, message })
         res.json(response)
@@ -173,12 +183,19 @@ router.get('/roles', checkToken, async (req, res, next) => {
 
 // #region POST paths
 //register
-router.post('/signup', credentialValidation, signUpVerifyUserExistence, async (req, res, next) => {
+router.post('/user', dataValidation, signUpVerifyUserExistence, async (req, res, next) => {
     try {
-        let { email, password } = req.body
+        let { names, firstLastname, secondLastname, phone, photoBase64, email, password } = req.body
+        let photoPath = ''
+        if (photoBase64) {
+            photoBase64 = photoBase64.replace(/^data:image\/png;base64,/, '')
+            let imageName = `avatar_${email}.png`
+            photoPath = `/avatars/${imageName}`
+            fs.writeFileSync(`..${photoPath}`, photoBase64, 'base64')
+        }
 
         password = bcrypt.hashSync(password, parseInt(process.env.SALT_ROUNDS))
-        let newUser = new User({ email, password })
+        let newUser = new User({ names, firstLastname, secondLastname, phone, photoPath, email, password })
         await newUser.save()
 
         let token = jwt.sign({ _id: newUser._id }, process.env.JWT_SECRET_KEY, { expiresIn: '1h' })
@@ -189,6 +206,23 @@ router.post('/signup', credentialValidation, signUpVerifyUserExistence, async (r
         next()
     }
 }, responseError)
+
+// router.post('/signup', credentialValidation, signUpVerifyUserExistence, async (req, res, next) => {
+//     try {
+//         let { email, password } = req.body
+
+//         password = bcrypt.hashSync(password, parseInt(process.env.SALT_ROUNDS))
+//         let newUser = new User({ email, password })
+//         await newUser.save()
+
+//         let token = jwt.sign({ _id: newUser._id }, process.env.JWT_SECRET_KEY, { expiresIn: '1h' })
+
+//         res.json(new JSONResponse({ data: { token } }))
+//     } catch (err) {
+//         req.message = err
+//         next()
+//     }
+// }, responseError)
 
 //login
 router.post('/signin', credentialValidation, signInVerifyUserExistence, checkPassword, async (req, res, next) => {
@@ -214,6 +248,9 @@ router.post('/roles', checkToken, async (req, res, next) => {
             throw 'Unauthorize request'
         }
         let { name } = req.body
+        if(!name){
+            throw 'The name field is not defined'
+        }
         let newRol = new Rol({ name })
         await newRol.save()
         let message = 'The new role was created successfully'

@@ -10,6 +10,10 @@ app.use('/api', require('./routes/index'))
 
 const port = process.env.API_PORT || 3000
 
+if (!fs.existsSync('./avatars')) {
+    fs.mkdirSync('./avatars');
+}
+
 app.listen(port, () => {
     console.log(`Server on http://localhost:${port}`)
 })
