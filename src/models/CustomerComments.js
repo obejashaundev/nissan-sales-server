@@ -1,17 +1,8 @@
 const { Schema, model } = require('mongoose');
-const userSchema = new Schema({
-    rol: {
-        type: Schema.Types.ObjectId,
-        ref: 'Rol',
-        required: false
-    },
-    names: String,
-    firstLastname: String,
-    secondLastname: String,
-    phone: String,
-    photoPath: String,
-    email: String,
-    password: String,
+const customerSchema = new Schema({
+    salesAdvisor: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    customer: { type: Schema.Types.ObjectId, ref: 'Customer', requiered: true },
+    comment: String,
     isActive: {
         type: Boolean,
         default: true
@@ -28,7 +19,7 @@ const userSchema = new Schema({
         type: String,
         default: null
     },
-    userWhoRemoved: {
+    userWhoRemoved: { 
         type: Schema.Types.ObjectId,
         ref: 'User',
         required: false
@@ -36,4 +27,4 @@ const userSchema = new Schema({
 }, {
     timestamps: true
 });
-module.exports = model('User', userSchema);
+module.exports = new model('CustomerComment', customerSchema);

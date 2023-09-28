@@ -7,6 +7,9 @@ const bcrypt = require('bcrypt')
 // #region Initialize router and data models
 const router = Router()
 const User = require('../models/User')
+const enumRoles = require('../enums/Roles')
+const Rol = require('../models/Rol')
+const Customer = require('../models/Customer')
 const JSONResponse = require('../models/JSONResponse')
 // #endregion
 
@@ -17,36 +20,45 @@ let responseError = (req, res) => {
 }
 let credentialValidation = (req, res, next) => {
     let { email, password } = req.body
-    if (!email) {
-        req.message = 'The email property is not defined'
+    try {
+        if (!email) {
+            throw 'The email property is not defined'
+        }
+        if (!password) {
+            throw 'The password property is not defined'
+        }
+        next()
+    } catch (err) {
+        req.message = err
         responseError(req, res)
     }
-    if (!password) {
-        req.message = 'The password property is not defined'
-        responseError(req, res)
-    }
-    next()
 }
 let signUpVerifyUserExistence = async (req, res, next) => {
     let { email } = req.body
-    let user = await User.findOne({ email })
-    if (user) {
-        req.message = "The user it's already exists"
-        responseError(req, res)
-    }else{
+    try {
+        let user = await User.findOne({ email })
+        if (user) {
+            throw "The user it's already exists"
+        }
         next()
+    } catch (err) {
+        req.message = err
+        responseError(req, res)
     }
 }
 let signInVerifyUserExistence = async (req, res, next) => {
     let { email } = req.body
-    let user = await User.findOne({ email })
-    if (!user) {
-        req.message = "The entered credentials are invalid"
-        responseError(req, res)
-    }else{
+    try {
+        let user = await User.findOne({ email })
+        if (!user) {
+            throw "The entered credentials are invalid"
+        }
         req.passwordHash = user.password
         req._id = user._id
         next()
+    } catch (err) {
+        req.message = err
+        responseError(req, res)
     }
 }
 let checkPassword = (req, res, next) => {
@@ -54,8 +66,9 @@ let checkPassword = (req, res, next) => {
         let { password } = req.body
         let passwordHash = req.passwordHash
         let isValid = bcrypt.compareSync(password, passwordHash)
-        let result = isValid ? '¡Welcome!' : 'The entered credentials are invalid'
+        let result = '¡Welcome!'
         if (!isValid) {
+            result = 'The entered credentials are invalid'
             throw result
         }
         req.result = result
@@ -69,19 +82,19 @@ let checkToken = (req, res, next) => {
     try {
         if (!req.headers.authorization) {
             throw 'Unauthorize request'
-        } else {
-            let token = req.headers.authorization.split(' ')[1]
-            if (!token) {
-                throw 'Unauthorize request'
-            } else {
-                try {
-                    let payload = jwt.verify(token, process.env.JWT_SECRET_KEY)
-                    req.userid = payload._id
-                    next()
-                } catch (err) {
-                    throw err.message
-                }
-            }
+        }
+        
+        let token = req.headers.authorization.split(' ')[1]
+        if (!token) {
+            throw 'Unauthorize request'
+        }
+
+        try {
+            let payload = jwt.verify(token, process.env.JWT_SECRET_KEY)
+            req.userId = payload._id
+            next()
+        } catch (err) {
+            throw err.message
         }
     } catch (err) {
         req.statusCode = 401
@@ -114,7 +127,7 @@ router.get('/tasks', (req, res, next) => {
         }
     ]}))
 })
-router.get('/private-tasks', checkToken, (req, res, next) => {
+router.get('/private-tasks', checkToken, async (req, res, next) => {
     res.json(new JSONResponse({
         data: [
             {
@@ -134,7 +147,28 @@ router.get('/private-tasks', checkToken, (req, res, next) => {
             }
         ]
     }))
-})
+}, responseError)
+
+router.get('/roles', checkToken, async (req, res, next) => {
+    try {
+        let userId = req.userId
+        let user = await User.findById(userId)
+        if (!user) {
+            throw 'The requesting user could not be found'
+        }
+        let rol = await Rol.findById(user.rol)
+        if (rol.name != "MASTER") {
+            throw 'Unauthorize request'
+        }
+        let data = Rol.find({ isActive: true, isRemoved: false })
+        let message = 'List of available roles'
+        let response = new JSONResponse({ data, message })
+        res.json(response)
+    } catch (err) {
+        req.message = err
+        next()
+    }
+}, responseError)
 // #endregion
 
 // #region POST paths
@@ -163,6 +197,27 @@ router.post('/signin', credentialValidation, signInVerifyUserExistence, checkPas
         let result = req.result
         let token = jwt.sign({ _id }, process.env.JWT_SECRET_KEY, { expiresIn: '1h' })
         res.json(new JSONResponse({ data: { token }, message: result }))
+    } catch (err) {
+        req.message = err
+        next()
+    }
+}, responseError)
+
+router.post('/roles', checkToken, async (req, res, next) => {
+    try {
+        let userId = req.userId
+        let user = await User.findById(userId)
+        if(!user){
+            throw 'The requesting user could not be found'
+        }
+        if (!user.rol.name == "MASTER"){
+            throw 'Unauthorize request'
+        }
+        let { name } = req.body
+        let newRol = new Rol({ name })
+        await newRol.save()
+        let message = 'The new role was created successfully'
+        res.json(new JSONResponse({ message }))
     } catch (err) {
         req.message = err
         next()

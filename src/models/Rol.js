@@ -1,17 +1,6 @@
 const { Schema, model } = require('mongoose');
-const userSchema = new Schema({
-    rol: {
-        type: Schema.Types.ObjectId,
-        ref: 'Rol',
-        required: false
-    },
-    names: String,
-    firstLastname: String,
-    secondLastname: String,
-    phone: String,
-    photoPath: String,
-    email: String,
-    password: String,
+const rolSchema = new Schema({
+    name: String,
     isActive: {
         type: Boolean,
         default: true
@@ -28,12 +17,13 @@ const userSchema = new Schema({
         type: String,
         default: null
     },
-    userWhoRemoved: {
+    userWhoRemoved: { 
         type: Schema.Types.ObjectId,
         ref: 'User',
-        required: false
+        required: false,
+        default: null
     }
 }, {
     timestamps: true
 });
-module.exports = model('User', userSchema);
+module.exports = model('Rol', rolSchema);
