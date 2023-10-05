@@ -179,6 +179,27 @@ router.get('/roles', checkToken, async (req, res, next) => {
         next()
     }
 }, responseError)
+
+router.get('/users', checkToken, async (req, res, next) => {
+    try {
+        let userId = req.userId
+        let user = await User.findById(userId).populate('rol')
+        if (!user) {
+            throw 'The requesting user could not be found'
+        }
+        let rolName = user.rol.name
+        if (!(rolName.includes(enumRoles.MASTER) || rolName.includes(enumRoles.ADMINISTRADOR))) {
+            throw 'Unauthorize request'
+        }
+        let data = await User.find({ isActive: true, isRemoved: false }).populate('rol')
+        let message = 'List of users'
+        let response = new JSONResponse({ data, message })
+        res.json(response)
+    } catch (err) {
+        req.message = err
+        next()
+    }
+}, responseError)
 // #endregion
 
 // #region POST paths
