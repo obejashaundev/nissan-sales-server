@@ -32,9 +32,9 @@ let credentialValidation = (req, res, next) => {
     }
 }
 let dataValidation = (req, res, next) => {
-    let { names, firstLastname, secondLastname, phone, email, password } = req.body
+    let { names, firstLastname, secondLastname, phone, email, password, rol } = req.body
     try {
-        if (!(names && firstLastname && secondLastname && phone && email && password)) {
+        if (!(names && firstLastname && secondLastname && phone && email && password && rol)) {
             throw 'All fields must be completed'
         }
         next()
@@ -204,9 +204,9 @@ router.get('/users', checkToken, async (req, res, next) => {
 
 // #region POST paths
 //register
-router.post('/user', dataValidation, signUpVerifyUserExistence, async (req, res, next) => {
+router.post('/users', dataValidation, signUpVerifyUserExistence, async (req, res, next) => {
     try {
-        let { names, firstLastname, secondLastname, phone, photoBase64, email, password } = req.body
+        let { names, firstLastname, secondLastname, phone, photoBase64, email, password, rol } = req.body
         let photoPath = ''
         if (photoBase64) {
             photoBase64 = photoBase64.replace(/^data:image\/png;base64,/, '')
@@ -214,14 +214,14 @@ router.post('/user', dataValidation, signUpVerifyUserExistence, async (req, res,
             photoPath = `/avatars/${imageName}`
             fs.writeFileSync(`..${photoPath}`, photoBase64, 'base64')
         }
-
+        let rolDb = await Rol.findOne({ name: rol })
+        if (!rolDb) {
+            throw 'Needs define a rol for this user'
+        }
         password = bcrypt.hashSync(password, parseInt(process.env.SALT_ROUNDS))
-        let newUser = new User({ names, firstLastname, secondLastname, phone, photoPath, email, password })
+        let newUser = new User({ rol: rolDb._id, names, firstLastname, secondLastname, phone, photoPath, email, password })
         await newUser.save()
-
-        let token = jwt.sign({ _id: newUser._id }, process.env.JWT_SECRET_KEY, { expiresIn: '1h' })
-
-        res.json(new JSONResponse({ data: { token } }))
+        res.json(new JSONResponse({ status: JSONResponse.success }))
     } catch (err) {
         req.message = err
         next()
@@ -287,6 +287,21 @@ router.post('/roles', checkToken, async (req, res, next) => {
 // #endregion
 
 // #region DELETE paths
+router.delete('/users/:id', checkToken, async (req, res, next) => {
+    try {
+        let userId = req.params.id
+        let user = await User.findById(userId)
+        if (!user) {
+            throw 'The requesting user could not be found'
+        }
+        let response = new JSONResponse({ data: {}, message: {} });
+        await User.deleteOne({ _id: userId })
+        res.json(response)
+    } catch (err) {
+        req.message = err
+        next()
+    }
+}, responseError)
 // #endregion
 
 module.exports = router
