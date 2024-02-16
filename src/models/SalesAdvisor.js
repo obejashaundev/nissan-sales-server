@@ -1,8 +1,9 @@
 const { Schema, model } = require('mongoose');
-const customerSchema = new Schema({
-    salesAdvisor: { type: Schema.Types.ObjectId, ref: 'User', required: true },
-    customer: { type: Schema.Types.ObjectId, ref: 'Customer', requiered: true },
-    comment: String,
+
+const salesAdvisorSchema = new Schema({
+    name: String,
+    email: String,
+    imageUrl: String,
     isActive: {
         type: Boolean,
         default: true
@@ -19,7 +20,7 @@ const customerSchema = new Schema({
         type: String,
         default: null
     },
-    userWhoRemoved: { 
+    userWhoRemoved: {
         type: Schema.Types.ObjectId,
         ref: 'User',
         required: false
@@ -27,4 +28,5 @@ const customerSchema = new Schema({
 }, {
     timestamps: true
 });
-module.exports = new model('CustomerComment', customerSchema);
+
+module.exports = model('SalesAdvisor', salesAdvisorSchema);

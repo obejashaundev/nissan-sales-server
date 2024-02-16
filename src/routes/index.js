@@ -3,6 +3,7 @@ const { Router } = require('express')
 const jwt = require('jsonwebtoken')
 const bcrypt = require('bcrypt')
 const fs = require('fs')
+const multer = require('multer');
 // #endregion
 
 // #region Initialize router and data models
@@ -11,7 +12,13 @@ const User = require('../models/User')
 const enumRoles = require('../enums/Roles')
 const Rol = require('../models/Rol')
 const Customer = require('../models/Customer')
-const JSONResponse = require('../models/JSONResponse')
+const JSONResponse = require('../models/JSONResponse');
+const SalesAdvisor = require('../models/SalesAdvisor');
+// #endregion
+
+// #region Multer configuration
+const storage = multer.memoryStorage();
+const upload = multer({ storage: storage });
 // #endregion
 
 // #region Handling functions for middleware of service
@@ -93,7 +100,7 @@ let checkToken = (req, res, next) => {
         if (!req.headers.authorization) {
             throw 'Solicitud no autorizada'
         }
-        
+
         let token = req.headers.authorization.split(' ')[1]
         if (!token) {
             throw 'Solicitud no autorizada'
@@ -112,64 +119,60 @@ let checkToken = (req, res, next) => {
         responseError(req, res)
     }
 }
-// #endregion
 
-// #region GET paths
-router.get('/', (req, res, next) => {
-    res.send('¡Bienvenido, esta es la API de NISSAN SALES APP!')
-})
-router.get('/tasks', (req, res, next) => {
-    res.json(new JSONResponse({ data: [
-        {
-            _id: 1,
-            name: 'Task one',
-            description: 'Lorem ipsum'
-        },
-        {
-            _id: 2,
-            name: 'Task two',
-            description: 'Lorem ipsum'
-        },
-        {
-            _id: 3,
-            name: 'Task three',
-            description: 'Lorem ipsum'
-        }
-    ]}))
-})
-router.get('/private-tasks', checkToken, async (req, res, next) => {
-    res.json(new JSONResponse({
-        data: [
-            {
-                _id: 1,
-                name: 'Task one',
-                description: 'Lorem ipsum'
-            },
-            {
-                _id: 2,
-                name: 'Task two',
-                description: 'Lorem ipsum'
-            },
-            {
-                _id: 3,
-                name: 'Task three',
-                description: 'Lorem ipsum'
-            }
-        ]
-    }))
-}, responseError)
-
-router.get('/roles', checkToken, async (req, res, next) => {
+let validateActiveUser = async (req, res, next) => {
     try {
         let userId = req.userId
         let user = await User.findById(userId).populate('rol')
         if (!user) {
             throw 'El usuario activo no pudo ser encontrado'
         }
-        let rolName = user.rol.name
-        if (!(rolName.includes(enumRoles.MASTER) || rolName.includes(enumRoles.ADMINISTRADOR))) {
+        req.rolName = user.rol.name;
+        next()
+    } catch (err) {
+        req.statusCode = 401
+        req.message = err
+        responseError(req, res)
+    }
+}
+
+let permissionForMaster = (req, res, next) => {
+    try {
+        let rolName = req.rolName;
+        if (enumRoles.MASTER.includes(rolName)) {
             throw 'Solicitud no autorizada'
         }
+        next()
+    } catch (err) {
+        req.statusCode = 401
+        req.message = err
+        responseError(req, res)
+    }
+}
+
+let permissionForAdmin = (req, res, next) => {
+    try {
+        let rolName = req.rolName;
+        let lsRoles = [enumRoles.MASTER, enumRoles.ADMINISTRADOR]
+        if (!lsRoles.includes(rolName)) {
+            throw 'Solicitud no autorizada'
+        }
+        next()
+    } catch (err) {
+        req.statusCode = 401
+        req.message = err
+        responseError(req, res)
+    }
+}
+// #endregion
+
+// #region GET paths
+router.get('/', (req, res, next) => {
+    res.send('¡Bienvenido, esta es la API de NISSAN SALES APP!')
+})
+
+router.get('/roles', checkToken, validateActiveUser, permissionForAdmin, async (req, res, next) => {
+    try {
         let data = await Rol.find({ isActive: true, isRemoved: false })
         let message = 'Lista de roles disponibles'
         let response = new JSONResponse({ data, message })
@@ -180,19 +183,10 @@ router.get('/roles', checkToken, async (req, res, next) => {
     }
 }, responseError)
 
-router.get('/users', checkToken, async (req, res, next) => {
+router.get('/users', checkToken, validateActiveUser, permissionForAdmin, async (req, res, next) => {
     try {
-        let userId = req.userId
-        let user = await User.findById(userId).populate('rol')
-        if (!user) {
-            throw 'El usuario activo no pudo ser encontrado'
-        }
-        let rolName = user.rol.name
-        if (!(rolName.includes(enumRoles.MASTER) || rolName.includes(enumRoles.ADMINISTRADOR))) {
-            throw 'Solicitud no autorizada'
-        }
         let data = await User.find({ isActive: true, isRemoved: false }).populate('rol')
-        if (!rolName.includes(enumRoles.MASTER)) {
+        if (!req.rolName.includes(enumRoles.MASTER)) {
             data = await User.find({ isActive: true, isRemoved: false }).populate({
                 path: 'rol',
                 match: {
@@ -208,6 +202,18 @@ router.get('/users', checkToken, async (req, res, next) => {
         next()
     }
 }, responseError)
+
+router.get('/salesAdvisor', checkToken, validateActiveUser, permissionForAdmin, async (req, res, next) => {
+    try {
+        let data = await SalesAdvisor.find({ isActive: true, isRemoved: false })
+        let message = 'List of sales advisors'
+        let response = new JSONResponse({ data, message })
+        res.json(response)
+    } catch (err) {
+        req.message = err
+        next()
+    }
+}, responseError)
 // #endregion
 
 // #region POST paths
@@ -215,12 +221,12 @@ router.get('/users', checkToken, async (req, res, next) => {
 router.post('/users', dataValidation, signUpVerifyUserExistence, async (req, res, next) => {
     try {
         let { names, firstLastname, secondLastname, phone, photoBase64, email, password, rol } = req.body
-        
+
         let rolDb = await Rol.findOne({ name: rol })
         if (!rolDb) {
             throw 'Es necesario definir un rol para este usuario'
         }
-        
+
         let photoPath = ''
         if (photoBase64) {
             photoBase64 = photoBase64.replace(/^data:image\/png;base64,/, '')
@@ -228,7 +234,7 @@ router.post('/users', dataValidation, signUpVerifyUserExistence, async (req, res
             photoPath = `/avatars/${imageName}`
             fs.writeFileSync(`..${photoPath}`, photoBase64, 'base64')
         }
-        
+
         password = bcrypt.hashSync(password, parseInt(process.env.SALT_ROUNDS))
         let newUser = new User({ rol: rolDb._id, names, firstLastname, secondLastname, phone, photoPath, email, password })
         await newUser.save()
@@ -238,23 +244,6 @@ router.post('/users', dataValidation, signUpVerifyUserExistence, async (req, res
         next()
     }
 }, responseError)
-
-// router.post('/signup', credentialValidation, signUpVerifyUserExistence, async (req, res, next) => {
-//     try {
-//         let { email, password } = req.body
-
-//         password = bcrypt.hashSync(password, parseInt(process.env.SALT_ROUNDS))
-//         let newUser = new User({ email, password })
-//         await newUser.save()
-
-//         let token = jwt.sign({ _id: newUser._id }, process.env.JWT_SECRET_KEY, { expiresIn: '1h' })
-
-//         res.json(new JSONResponse({ data: { token } }))
-//     } catch (err) {
-//         req.message = err
-//         next()
-//     }
-// }, responseError)
 
 //login
 router.post('/signin', credentialValidation, signInVerifyUserExistence, checkPassword, async (req, res, next) => {
@@ -269,18 +258,10 @@ router.post('/signin', credentialValidation, signInVerifyUserExistence, checkPas
     }
 }, responseError)
 
-router.post('/roles', checkToken, async (req, res, next) => {
+router.post('/roles', checkToken, validateActiveUser, permissionForMaster, async (req, res, next) => {
     try {
-        let userId = req.userId
-        let user = await User.findById(userId)
-        if(!user){
-            throw 'El usuario activo no pudo ser encontrado'
-        }
-        if (!user.rol.name == "MASTER"){
-            throw 'Solicitud no autorizada'
-        }
         let { name } = req.body
-        if(!name){
+        if (!name) {
             throw 'El campo nombre no ha sido definido'
         }
         let newRol = new Rol({ name })
@@ -292,24 +273,104 @@ router.post('/roles', checkToken, async (req, res, next) => {
         next()
     }
 }, responseError)
+
+router.post('/salesAdvisor', checkToken, validateActiveUser, permissionForAdmin, upload.single('image'), async (req, res, next) => {
+    try {
+        const { name, email } = req.body;
+        const imageBinary = req.file.buffer; // Get the image binary data
+
+        if (!(name && email && imageBinary)) {
+            throw 'Faltaron algunos campos obligatorios';
+        }
+
+        // Send the image binary to the ImgHippo API
+        const imgHippoResponse = await axios.post('https://www.imghippo.com/api/v1/upload', {
+            key: process.env.IMGHIPPO_API_KEY, // Replace with your actual API key
+            file: imageBinary,
+            name: req.file.originalname, // Optional: Use the original filename
+        });
+
+        const imageUrl = imgHippoResponse.data.url; // Get the uploaded image URL
+
+        // Create a new SalesAdvisor record with the image URL
+        const newSalesAdvisor = new SalesAdvisor({ name, email, imageUrl });
+        await newSalesAdvisor.save();
+
+        let response = new JSONResponse({ message: 'Asesor de ventas registrado exitosamente.' })
+        res.json(response);
+    } catch (err) {
+        req.message = err;
+        next();
+    }
+}, responseError);
+
+router.post('/locations', checkToken, validateActiveUser, permissionForMaster, async (req, res, next) => {
+    try {
+        let { locations } = req.body.locations
+        if (locations) {
+            if(Array.isArray(locations)){
+                for(let location of locations){
+                    let newLocation = new Location({ name: location.name })
+                    await newLocation.save()
+                }
+            }else if(typeof locations === 'object'){
+                let newLocation = new Location({ name: locations.name })
+                await newLocation.save()
+            }else{
+                throw "Introduce un objeto o una lista de objetos de tipo { name: String }"
+            }
+            let response = new JSONResponse({ message: 'Localidades almacenadas correctamente.' })
+        }
+    } catch (err) {
+        req.message = err
+        next()
+    }
+}, responseError)
 // #endregion
 
 // #region PUT paths
 // #endregion
 
 // #region DELETE paths
-router.delete('/users/:id', checkToken, async (req, res, next) => {
+router.delete('/users/:id/:isForced', checkToken, validateActiveUser, permissionForAdmin, async (req, res, next) => {
     try {
         let userId = req.params.id
-        let user = await User.findById(userId).populate('rol')
-        if (!user) {
+        let isForced = req.params.isForced
+        let entity = await User.findById(userId).populate('rol')
+        if (!entity) {
             throw 'El usuario seleccionado no pudo ser encontrado'
         }
-        if(user.rol.name.includes(enumRoles.MASTER)){
+        if (entity.rol.name.includes(enumRoles.MASTER)) {
             throw 'El usuario seleccionado no puede ser eliminado debido a que la aplicación necesita de él'
         }
-        let response = new JSONResponse({ data: {}, message: {} });
-        await User.deleteOne({ _id: userId })
+        entity.isActive = false
+        entity.isRemoved = true
+        await User.updateOne(entity)
+        if (isForced) {
+            await User.deleteOne(entity)
+        }
+        let response = new JSONResponse({ message: 'El usuario se eliminó correctamente.' });
+        res.json(response)
+    } catch (err) {
+        req.message = err
+        next()
+    }
+}, responseError)
+
+router.delete('/salesAdvisor/:id/:isForced', checkToken, validateActiveUser, permissionForAdmin, async (req, res, next) => {
+    try {
+        let userId = req.params.id
+        let isForced = req.params.isForced
+
+        let entity = await SalesAdvisor.findById(userId)
+        entity.isActive = false
+        entity.isRemoved = true
+
+        await SalesAdvisor.updateOne(entity)
+        if (isForced) {
+            await SalesAdvisor.deleteOne(entity)
+        }
+        let response = new JSONResponse({ message: 'Asesor de ventas registrado exitosamente.' })
         res.json(response)
     } catch (err) {
         req.message = err

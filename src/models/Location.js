@@ -1,10 +1,7 @@
-const {Schema, model} = require('mongoose');
-const customerSchema = new Schema({
+const { Schema, model } = require('mongoose');
+
+const locationSchema = new Schema({
     name: String,
-    location: String,
-    phone: String,
-    carModel: String,
-    broadcastMedium: String,
     isActive: {
         type: Boolean,
         default: true
@@ -29,4 +26,5 @@ const customerSchema = new Schema({
 }, {
     timestamps: true
 });
-module.exports = new model('Customer', customerSchema);
+
+module.exports = model('Location', locationSchema);
