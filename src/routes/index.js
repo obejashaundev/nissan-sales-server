@@ -12,8 +12,11 @@ const User = require('../models/User')
 const enumRoles = require('../enums/Roles')
 const Rol = require('../models/Rol')
 const Customer = require('../models/Customer')
+const Location = require('../models/Location')
 const JSONResponse = require('../models/JSONResponse');
 const SalesAdvisor = require('../models/SalesAdvisor');
+const CarModel = require('../models/CarModel');
+const AdvertisingMedium = require('../models/AdvertisingMedium');
 // #endregion
 
 // #region Multer configuration
@@ -95,7 +98,7 @@ let checkPassword = (req, res, next) => {
         responseError(req, res)
     }
 }
-let checkToken = (req, res, next) => {
+let checkToken = async (req, res, next) => {
     try {
         if (!req.headers.authorization) {
             throw 'Solicitud no autorizada'
@@ -168,7 +171,7 @@ let permissionForAdmin = (req, res, next) => {
 
 // #region GET paths
 router.get('/', (req, res, next) => {
-    res.send('¡Bienvenido, esta es la API de NISSAN SALES APP!')
+    res.send('¡Bienvenido, esta es la NISSAN SALES API!')
 })
 
 router.get('/roles', checkToken, validateActiveUser, permissionForAdmin, async (req, res, next) => {
@@ -214,6 +217,43 @@ router.get('/salesAdvisor', checkToken, validateActiveUser, permissionForAdmin, 
         next()
     }
 }, responseError)
+
+router.get('/locations', checkToken, validateActiveUser, async (req, res, next) => {
+    try {
+        let data = await Location.find({ isActive: true, isRemoved: false })
+        let message = 'List of locations'
+        let response = new JSONResponse({ data, message })
+        res.json(response)
+    } catch (err) {
+        req.message = err
+        next()
+    }
+}, responseError)
+
+router.get('/carModels', checkToken, validateActiveUser, async (req, res, next) => {
+    try {
+        let data = await CarModel.find({ isActive: true, isRemoved: false })
+        let message = 'List of car models'
+        let response = new JSONResponse({ data, message })
+        res.json(response)
+    } catch (err) {
+        req.message = err
+        next()
+    }
+}, responseError)
+
+router.get('/customers', checkToken, validateActiveUser, async (req, res, next) => {
+    try {
+        let data = await Customer.find({ isActive: true, isRemoved: false })
+        let message = 'List of customers'
+        let response = new JSONResponse({ data, message })
+        res.json(response)
+    } catch (err) {
+        req.message = err
+        next()
+    }
+}, responseError)
+
 // #endregion
 
 // #region POST paths
@@ -228,12 +268,14 @@ router.post('/users', dataValidation, signUpVerifyUserExistence, async (req, res
         }
 
         let photoPath = ''
-        if (photoBase64) {
-            photoBase64 = photoBase64.replace(/^data:image\/png;base64,/, '')
-            let imageName = `avatar_${email}.png`
-            photoPath = `/avatars/${imageName}`
-            fs.writeFileSync(`..${photoPath}`, photoBase64, 'base64')
-        }
+        // Send the image binary to the ImgHippo API
+        let imgHippoResponse = await axios.post('https://www.imghippo.com/api/v1/upload', {
+            key: process.env.IMGHIPPO_API_KEY, // Replace with your actual API key
+            file: photoBase64,
+            name: email, // Optional: Use the original filename
+        });
+
+        photoPath = imgHippoResponse.data.url; // Get the uploaded image URL
 
         password = bcrypt.hashSync(password, parseInt(process.env.SALT_ROUNDS))
         let newUser = new User({ rol: rolDb._id, names, firstLastname, secondLastname, phone, photoPath, email, password })
@@ -262,7 +304,7 @@ router.post('/roles', checkToken, validateActiveUser, permissionForMaster, async
     try {
         let { name } = req.body
         if (!name) {
-            throw 'El campo nombre no ha sido definido'
+            throw 'El campo <<name>> no ha sido definido'
         }
         let newRol = new Rol({ name })
         await newRol.save()
@@ -276,24 +318,24 @@ router.post('/roles', checkToken, validateActiveUser, permissionForMaster, async
 
 router.post('/salesAdvisor', checkToken, validateActiveUser, permissionForAdmin, upload.single('image'), async (req, res, next) => {
     try {
-        const { name, email } = req.body;
-        const imageBinary = req.file.buffer; // Get the image binary data
+        let { name, email } = req.body;
+        let imageBinary = req.file.buffer; // Get the image binary data
 
         if (!(name && email && imageBinary)) {
             throw 'Faltaron algunos campos obligatorios';
         }
 
         // Send the image binary to the ImgHippo API
-        const imgHippoResponse = await axios.post('https://www.imghippo.com/api/v1/upload', {
+        let imgHippoResponse = await axios.post('https://www.imghippo.com/api/v1/upload', {
             key: process.env.IMGHIPPO_API_KEY, // Replace with your actual API key
             file: imageBinary,
             name: req.file.originalname, // Optional: Use the original filename
         });
 
-        const imageUrl = imgHippoResponse.data.url; // Get the uploaded image URL
+        let imageUrl = imgHippoResponse.data.url; // Get the uploaded image URL
 
         // Create a new SalesAdvisor record with the image URL
-        const newSalesAdvisor = new SalesAdvisor({ name, email, imageUrl });
+        let newSalesAdvisor = new SalesAdvisor({ name, email, imageUrl });
         await newSalesAdvisor.save();
 
         let response = new JSONResponse({ message: 'Asesor de ventas registrado exitosamente.' })
@@ -310,22 +352,100 @@ router.post('/locations', checkToken, validateActiveUser, permissionForMaster, a
         if (locations) {
             if(Array.isArray(locations)){
                 for(let location of locations){
-                    let newLocation = new Location({ name: location.name })
-                    await newLocation.save()
+                    if (location.name) {
+                        let newLocation = new Location({ name: location.name })
+                        await newLocation.save()
+                    }
                 }
             }else if(typeof locations === 'object'){
-                let newLocation = new Location({ name: locations.name })
-                await newLocation.save()
+                if (locations.name) {
+                    let newLocation = new Location({ name: locations.name })
+                    await newLocation.save()
+                }
             }else{
                 throw "Introduce un objeto o una lista de objetos de tipo { name: String }"
             }
             let response = new JSONResponse({ message: 'Localidades almacenadas correctamente.' })
+            res.json(response)
         }
     } catch (err) {
         req.message = err
         next()
     }
 }, responseError)
+
+router.post('/carModels', checkToken, validateActiveUser, permissionForAdmin, async (req, res, next) => {
+    try {
+        let { carModels } = req.body.carModels
+        if (carModels) {
+            if (Array.isArray(carModels)) {
+                for (let carModel of carModels) {
+                    if (carModel.name) {
+                        let _carModel = new CarModel({ name: carModel.name })
+                        await _carModel.save()
+                    }
+                }
+            } else if (typeof carModels === 'object') {
+                if (carModels.name) {
+                    let _carModel = new CarModel({ name: carModels.name })
+                    await _carModel.save()
+                }
+            } else {
+                throw "Introduce un objeto o una lista de objetos de tipo { name: String }"
+            }
+            let response = new JSONResponse({ message: 'Modelos de carros almacenados correctamente.' })
+            res.json(response)
+        }
+    } catch (err) {
+        req.message = err
+        next()
+    }
+}, responseError)
+
+router.post('/customers', checkToken, validateActiveUser, async (req, res, next) => {
+    try {
+        let { customer } = req.body.customer
+        if (customer) {
+            let _customer = new Customer({ 
+                name: customer.name,
+                location: customer.location,
+                carModel: customer.carModel,
+                advertisingMedium: customer.advertisingMedium
+            })
+            await _customer.save()
+            let response = new JSONResponse({ message: 'El cliente se guardó satisfactoriamente.' })
+            res.json(response)
+        } else {
+            throw "Los datos enviados son inválidos."
+        }
+    } catch (err) {
+        req.message = err
+        next()
+    }
+}, responseError)
+
+router.post('/advertisingMediums', checkToken, validateActiveUser, permissionForAdmin, async (req, res, next) => {
+    try {
+        let { customer } = req.body.customer
+        if (customer) {
+            let _customer = new Customer({
+                name: customer.name,
+                location: customer.location,
+                carModel: customer.carModel,
+                advertisingMedium: customer.advertisingMedium
+            })
+            await _customer.save()
+            let response = new JSONResponse({ message: 'El cliente se guardó satisfactoriamente.' })
+            res.json(response)
+        } else {
+            throw "Los datos enviados son inválidos."
+        }
+    } catch (err) {
+        req.message = err
+        next()
+    }
+}, responseError)
+
 // #endregion
 
 // #region PUT paths
@@ -371,6 +491,90 @@ router.delete('/salesAdvisor/:id/:isForced', checkToken, validateActiveUser, per
             await SalesAdvisor.deleteOne(entity)
         }
         let response = new JSONResponse({ message: 'Asesor de ventas registrado exitosamente.' })
+        res.json(response)
+    } catch (err) {
+        req.message = err
+        next()
+    }
+}, responseError)
+
+router.delete('/customers/:id/:isForced', checkToken, validateActiveUser, permissionForAdmin, async (req, res, next) => {
+    try {
+        let customerId = req.params.id
+        let isForced = req.params.isForced
+
+        let entity = await Customer.findById(customerId)
+        entity.isActive = false
+        entity.isRemoved = true
+
+        await Customer.updateOne(entity)
+        if (isForced) {
+            await Customer.deleteOne(entity)
+        }
+        let response = new JSONResponse({ message: 'Eliminado exitosamente.' })
+        res.json(response)
+    } catch (err) {
+        req.message = err
+        next()
+    }
+}, responseError)
+
+router.delete('/locations/:id/:isForced', checkToken, validateActiveUser, permissionForAdmin, async (req, res, next) => {
+    try {
+        let locationId = req.params.id
+        let isForced = req.params.isForced
+
+        let entity = await Location.findById(locationId)
+        entity.isActive = false
+        entity.isRemoved = true
+
+        await Location.updateOne(entity)
+        if (isForced) {
+            await Location.deleteOne(entity)
+        }
+        let response = new JSONResponse({ message: 'Eliminado exitosamente.' })
+        res.json(response)
+    } catch (err) {
+        req.message = err
+        next()
+    }
+}, responseError)
+
+router.delete('/carModels/:id/:isForced', checkToken, validateActiveUser, permissionForAdmin, async (req, res, next) => {
+    try {
+        let carModelId = req.params.id
+        let isForced = req.params.isForced
+
+        let entity = await CarModel.findById(carModelId)
+        entity.isActive = false
+        entity.isRemoved = true
+
+        await CarModel.updateOne(entity)
+        if (isForced) {
+            await CarModel.deleteOne(entity)
+        }
+        let response = new JSONResponse({ message: 'Eliminado exitosamente.' })
+        res.json(response)
+    } catch (err) {
+        req.message = err
+        next()
+    }
+}, responseError)
+
+router.delete('/advertisingMediums/:id/:isForced', checkToken, validateActiveUser, permissionForAdmin, async (req, res, next) => {
+    try {
+        let advertisingMediumId = req.params.id
+        let isForced = req.params.isForced
+
+        let entity = await AdvertisingMedium.findById(advertisingMediumId)
+        entity.isActive = false
+        entity.isRemoved = true
+
+        await AdvertisingMedium.updateOne(entity)
+        if (isForced) {
+            await AdvertisingMedium.deleteOne(entity)
+        }
+        let response = new JSONResponse({ message: 'Eliminado exitosamente.' })
         res.json(response)
     } catch (err) {
         req.message = err

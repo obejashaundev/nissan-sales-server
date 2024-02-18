@@ -1,10 +1,22 @@
 const {Schema, model} = require('mongoose');
 const customerSchema = new Schema({
     name: String,
-    location: String,
     phone: String,
-    carModel: String,
-    broadcastMedium: String,
+    location: {
+        type: Schema.Types.ObjectId,
+        ref: 'Location',
+        required: true
+    },
+    carModel: {
+        type: Schema.Types.ObjectId,
+        ref: 'CarModel',
+        required: false
+    },
+    advertisingMedium: {
+        type: Schema.Types.ObjectId,
+        ref: 'AdvertisingMedium',
+        required: true
+    },
     isActive: {
         type: Boolean,
         default: true
