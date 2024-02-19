@@ -17,6 +17,7 @@ const JSONResponse = require('../models/JSONResponse');
 const SalesAdvisor = require('../models/SalesAdvisor');
 const CarModel = require('../models/CarModel');
 const AdvertisingMedium = require('../models/AdvertisingMedium');
+const { ObjectId } = require('mongodb');
 // #endregion
 
 // #region Multer configuration
@@ -142,7 +143,7 @@ let validateActiveUser = async (req, res, next) => {
 let permissionForMaster = (req, res, next) => {
     try {
         let rolName = req.rolName;
-        if (enumRoles.MASTER.includes(rolName)) {
+        if (!enumRoles.MASTER.includes(rolName)) {
             throw 'Solicitud no autorizada'
         }
         next()
@@ -210,6 +211,18 @@ router.get('/salesAdvisor', checkToken, validateActiveUser, permissionForAdmin, 
     try {
         let data = await SalesAdvisor.find({ isActive: true, isRemoved: false })
         let message = 'List of sales advisors'
+        let response = new JSONResponse({ data, message })
+        res.json(response)
+    } catch (err) {
+        req.message = err
+        next()
+    }
+}, responseError)
+
+router.get('/advertisingMediums', checkToken, validateActiveUser, async (req, res, next) => {
+    try {
+        let data = await AdvertisingMedium.find({ isActive: true, isRemoved: false })
+        let message = 'List of advertising medium'
         let response = new JSONResponse({ data, message })
         res.json(response)
     } catch (err) {
@@ -350,7 +363,7 @@ router.post('/salesAdvisor', checkToken, validateActiveUser, permissionForAdmin,
 
 router.post('/locations', checkToken, validateActiveUser, permissionForMaster, async (req, res, next) => {
     try {
-        let { locations } = req.body.locations
+        let { locations } = req.body
         if (locations) {
             if(Array.isArray(locations)){
                 for(let location of locations){
@@ -428,19 +441,25 @@ router.post('/customers', checkToken, validateActiveUser, async (req, res, next)
 
 router.post('/advertisingMediums', checkToken, validateActiveUser, permissionForAdmin, async (req, res, next) => {
     try {
-        let { customer } = req.body.customer
-        if (customer) {
-            let _customer = new Customer({
-                name: customer.name,
-                location: customer.location,
-                carModel: customer.carModel,
-                advertisingMedium: customer.advertisingMedium
-            })
-            await _customer.save()
-            let response = new JSONResponse({ message: 'El cliente se guardó satisfactoriamente.' })
+        let { advertisingMediums } = req.body
+        if (advertisingMediums) {
+            if (Array.isArray(advertisingMediums)) {
+                for (let advertisingMedium of advertisingMediums) {
+                    if (advertisingMedium.name) {
+                        let _advertisingMedium = new AdvertisingMedium({ name: advertisingMedium.name })
+                        await _advertisingMedium.save()
+                    }
+                }
+            } else if (typeof advertisingMediums === 'object') {
+                if (advertisingMediums.name) {
+                    let _advertisingMedium = new AdvertisingMedium({ name: advertisingMediums.name })
+                    await _advertisingMedium.save()
+                }
+            } else {
+                throw "Introduce un objeto o una lista de objetos de tipo { name: String }"
+            }
+            let response = new JSONResponse({ message: 'Medios de publicidad almacenadas correctamente.' })
             res.json(response)
-        } else {
-            throw "Los datos enviados son inválidos."
         }
     } catch (err) {
         req.message = err
@@ -465,11 +484,9 @@ router.delete('/users/:id/:isForced', checkToken, validateActiveUser, permission
         if (entity.rol.name.includes(enumRoles.MASTER)) {
             throw 'El usuario seleccionado no puede ser eliminado debido a que la aplicación necesita de él'
         }
-        entity.isActive = false
-        entity.isRemoved = true
-        await User.updateOne(entity)
+        await User.updateOne({ _id: new ObjectId(userId) }, { $set: { isActive: false, isRemoved: true } })
         if (isForced) {
-            await User.deleteOne(entity)
+            await User.deleteOne({ _id: new ObjectId(userId) })
         }
         let response = new JSONResponse({ message: 'El usuario se eliminó correctamente.' });
         res.json(response)
@@ -481,16 +498,12 @@ router.delete('/users/:id/:isForced', checkToken, validateActiveUser, permission
 
 router.delete('/salesAdvisor/:id/:isForced', checkToken, validateActiveUser, permissionForAdmin, async (req, res, next) => {
     try {
-        let userId = req.params.id
+        let salesAdvisorId = req.params.id
         let isForced = req.params.isForced
 
-        let entity = await SalesAdvisor.findById(userId)
-        entity.isActive = false
-        entity.isRemoved = true
-
-        await SalesAdvisor.updateOne(entity)
+        await SalesAdvisor.updateOne({ _id: new ObjectId(salesAdvisorId) }, { $set: { isActive: false, isRemoved: true } })
         if (isForced) {
-            await SalesAdvisor.deleteOne(entity)
+            await SalesAdvisor.deleteOne({ _id: new ObjectId(salesAdvisorId) })
         }
         let response = new JSONResponse({ message: 'Asesor de ventas registrado exitosamente.' })
         res.json(response)
@@ -504,14 +517,10 @@ router.delete('/customers/:id/:isForced', checkToken, validateActiveUser, permis
     try {
         let customerId = req.params.id
         let isForced = req.params.isForced
-
-        let entity = await Customer.findById(customerId)
-        entity.isActive = false
-        entity.isRemoved = true
-
-        await Customer.updateOne(entity)
+        
+        await Customer.updateOne({ _id: new ObjectId(customerId) }, { $set: { isActive: false, isRemoved: true } })
         if (isForced) {
-            await Customer.deleteOne(entity)
+            await Customer.deleteOne({ _id: new ObjectId(customerId) })
         }
         let response = new JSONResponse({ message: 'Eliminado exitosamente.' })
         res.json(response)
@@ -526,13 +535,9 @@ router.delete('/locations/:id/:isForced', checkToken, validateActiveUser, permis
         let locationId = req.params.id
         let isForced = req.params.isForced
 
-        let entity = await Location.findById(locationId)
-        entity.isActive = false
-        entity.isRemoved = true
-
-        await Location.updateOne(entity)
+        await Location.updateOne({ _id: new ObjectId(locationId) }, { $set: { isActive: false, isRemoved: true } })
         if (isForced) {
-            await Location.deleteOne(entity)
+            await Location.deleteOne({ _id: new ObjectId(locationId) })
         }
         let response = new JSONResponse({ message: 'Eliminado exitosamente.' })
         res.json(response)
@@ -547,13 +552,9 @@ router.delete('/carModels/:id/:isForced', checkToken, validateActiveUser, permis
         let carModelId = req.params.id
         let isForced = req.params.isForced
 
-        let entity = await CarModel.findById(carModelId)
-        entity.isActive = false
-        entity.isRemoved = true
-
-        await CarModel.updateOne(entity)
+        await CarModel.updateOne({ _id: new ObjectId(carModelId) }, { $set: { isActive: false, isRemoved: true } })
         if (isForced) {
-            await CarModel.deleteOne(entity)
+            await CarModel.deleteOne({ _id: new ObjectId(carModelId) })
         }
         let response = new JSONResponse({ message: 'Eliminado exitosamente.' })
         res.json(response)
@@ -568,13 +569,9 @@ router.delete('/advertisingMediums/:id/:isForced', checkToken, validateActiveUse
         let advertisingMediumId = req.params.id
         let isForced = req.params.isForced
 
-        let entity = await AdvertisingMedium.findById(advertisingMediumId)
-        entity.isActive = false
-        entity.isRemoved = true
-
-        await AdvertisingMedium.updateOne(entity)
+        await AdvertisingMedium.updateOne({ _id: new ObjectId(advertisingMediumId) }, { $set: { isActive: false, isRemoved: true } })
         if (isForced) {
-            await AdvertisingMedium.deleteOne(entity)
+            await AdvertisingMedium.deleteOne({ _id: new ObjectId(advertisingMediumId) })
         }
         let response = new JSONResponse({ message: 'Eliminado exitosamente.' })
         res.json(response)
