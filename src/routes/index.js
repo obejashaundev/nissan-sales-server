@@ -3,7 +3,8 @@ const { Router } = require('express')
 const jwt = require('jsonwebtoken')
 const bcrypt = require('bcrypt')
 const fs = require('fs')
-const multer = require('multer');
+const multer = require('multer')
+const axios = require('axios')
 // #endregion
 
 // #region Initialize router and data models
@@ -282,14 +283,18 @@ router.post('/users', dataValidation, signUpVerifyUserExistence, async (req, res
 
         let photoPath = ''
         if(photoBase64){
-            // Send the image binary to the ImgHippo API
-            let imgHippoResponse = await axios.post('https://www.imghippo.com/api/v1/upload', {
-                key: process.env.IMGHIPPO_API_KEY, // Replace with your actual API key
-                file: photoBase64,
-                name: email, // Optional: Use the original filename
+            let formData = new FormData()
+            formData.append('key', process.env.IMG_HOSTING_API_KEY)
+            formData.append('image', phoyoBase64)
+
+            // Send & save the image binary to the ImgBB API
+            let imgHippoResponse = await axios.post('https://api.imgbb.com/1/upload', formData, {
+                headers: {
+                    'Content-Type': 'multipart/form-data',
+                }
             });
 
-            photoPath = imgHippoResponse.data.url; // Get the uploaded image URL
+            photoPath = imgHippoResponse.data.data.url; // Get the uploaded image URL
         }
 
         password = bcrypt.hashSync(password, parseInt(process.env.SALT_ROUNDS))
@@ -307,7 +312,7 @@ router.post('/signin', credentialValidation, signInVerifyUserExistence, checkPas
     try {
         let _id = req._id
         let result = req.result
-        let token = jwt.sign({ _id }, process.env.JWT_SECRET_KEY, { expiresIn: '1h' })
+        let token = jwt.sign({ _id }, process.env.JWT_SECRET_KEY, { expiresIn: '5h' })
         res.json(new JSONResponse({ data: { token }, message: result }))
     } catch (err) {
         req.message = err
@@ -334,20 +339,26 @@ router.post('/roles', checkToken, validateActiveUser, permissionForMaster, async
 router.post('/salesAdvisor', checkToken, validateActiveUser, permissionForAdmin, upload.single('image'), async (req, res, next) => {
     try {
         let { name, email } = req.body;
-        let imageBinary = req.file.buffer; // Get the image binary data
+        let imageBuffer = req.file.buffer; // Get the image binary data
 
-        if (!(name && email && imageBinary)) {
+        if (!(name && email && imageBuffer)) {
             throw 'Faltaron algunos campos obligatorios';
         }
+        
+        let imageBase64 = imageBuffer.toString('base64')
+        let formData = new FormData()
+        formData.append('key', process.env.IMG_HOSTING_API_KEY)
+        formData.append('image', imageBase64)
+        formData.append('name', req.file.originalname)
 
-        // Send the image binary to the ImgHippo API
-        let imgHippoResponse = await axios.post('https://www.imghippo.com/api/v1/upload', {
-            key: process.env.IMGHIPPO_API_KEY, // Replace with your actual API key
-            file: imageBinary,
-            name: req.file.originalname, // Optional: Use the original filename
+        // Send & save the image binary to the ImgBB API
+        let imgHippoResponse = await axios.post('https://api.imgbb.com/1/upload', formData, {
+            headers: {
+                'Content-Type': 'multipart/form-data',
+            }
         });
 
-        let imageUrl = imgHippoResponse.data.url; // Get the uploaded image URL
+        let imageUrl = imgHippoResponse.data.data.url; // Get the uploaded image URL
 
         // Create a new SalesAdvisor record with the image URL
         let newSalesAdvisor = new SalesAdvisor({ name, email, imageUrl });
@@ -391,7 +402,7 @@ router.post('/locations', checkToken, validateActiveUser, permissionForMaster, a
 
 router.post('/carModels', checkToken, validateActiveUser, permissionForAdmin, async (req, res, next) => {
     try {
-        let { carModels } = req.body.carModels
+        let { carModels } = req.body
         if (carModels) {
             if (Array.isArray(carModels)) {
                 for (let carModel of carModels) {
@@ -419,7 +430,7 @@ router.post('/carModels', checkToken, validateActiveUser, permissionForAdmin, as
 
 router.post('/customers', checkToken, validateActiveUser, async (req, res, next) => {
     try {
-        let { customer } = req.body.customer
+        let { customer } = req.body
         if (customer) {
             let _customer = new Customer({ 
                 name: customer.name,
