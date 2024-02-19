@@ -268,14 +268,16 @@ router.post('/users', dataValidation, signUpVerifyUserExistence, async (req, res
         }
 
         let photoPath = ''
-        // Send the image binary to the ImgHippo API
-        let imgHippoResponse = await axios.post('https://www.imghippo.com/api/v1/upload', {
-            key: process.env.IMGHIPPO_API_KEY, // Replace with your actual API key
-            file: photoBase64,
-            name: email, // Optional: Use the original filename
-        });
+        if(photoBase64){
+            // Send the image binary to the ImgHippo API
+            let imgHippoResponse = await axios.post('https://www.imghippo.com/api/v1/upload', {
+                key: process.env.IMGHIPPO_API_KEY, // Replace with your actual API key
+                file: photoBase64,
+                name: email, // Optional: Use the original filename
+            });
 
-        photoPath = imgHippoResponse.data.url; // Get the uploaded image URL
+            photoPath = imgHippoResponse.data.url; // Get the uploaded image URL
+        }
 
         password = bcrypt.hashSync(password, parseInt(process.env.SALT_ROUNDS))
         let newUser = new User({ rol: rolDb._id, names, firstLastname, secondLastname, phone, photoPath, email, password })
