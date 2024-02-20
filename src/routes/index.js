@@ -342,7 +342,7 @@ router.post('/salesAdvisor', checkToken, validateActiveUser, permissionForAdmin,
         let imageBuffer = req.file.buffer; // Get the image binary data
 
         if (!(name && email && imageBuffer)) {
-            throw 'Faltaron algunos campos obligatorios';
+            throw 'Faltaron algunos campos obligatorios { name, email, image }';
         }
         
         let imageBase64 = imageBuffer.toString('base64')
@@ -507,6 +507,29 @@ router.delete('/users/:id/:isForced', checkToken, validateActiveUser, permission
     }
 }, responseError)
 
+router.delete('/roles/:id/:isForced', checkToken, validateActiveUser, permissionForAdmin, async (req, res, next) => {
+    try {
+        let rolId = req.params.id
+        let isForced = req.params.isForced
+        let entity = await Rol.findById(rolId)
+        if (!entity) {
+            throw 'El rol seleccionado no pudo ser encontrado'
+        }
+        if (entity.name.includes(enumRoles.MASTER)) {
+            throw 'El rol seleccionado no puede ser eliminado debido a que la aplicación necesita de él'
+        }
+        await Rol.updateOne({ _id: new ObjectId(rolId) }, { $set: { isActive: false, isRemoved: true } })
+        if (isForced) {
+            await Rol.deleteOne({ _id: new ObjectId(rolId) })
+        }
+        let response = new JSONResponse({ message: 'El rol se eliminó correctamente.' });
+        res.json(response)
+    } catch (err) {
+        req.message = err
+        next()
+    }
+}, responseError)
+
 router.delete('/salesAdvisor/:id/:isForced', checkToken, validateActiveUser, permissionForAdmin, async (req, res, next) => {
     try {
         let salesAdvisorId = req.params.id
@@ -516,7 +539,7 @@ router.delete('/salesAdvisor/:id/:isForced', checkToken, validateActiveUser, per
         if (isForced) {
             await SalesAdvisor.deleteOne({ _id: new ObjectId(salesAdvisorId) })
         }
-        let response = new JSONResponse({ message: 'Asesor de ventas registrado exitosamente.' })
+        let response = new JSONResponse({ message: 'Asesor de ventas eliminado exitosamente.' })
         res.json(response)
     } catch (err) {
         req.message = err
