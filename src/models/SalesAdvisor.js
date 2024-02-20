@@ -3,6 +3,7 @@ const { Schema, model } = require('mongoose');
 const salesAdvisorSchema = new Schema({
     name: String,
     email: String,
+    phone: String,
     imageUrl: String,
     isActive: {
         type: Boolean,

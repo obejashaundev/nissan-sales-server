@@ -338,10 +338,10 @@ router.post('/roles', checkToken, validateActiveUser, permissionForMaster, async
 
 router.post('/salesAdvisor', checkToken, validateActiveUser, permissionForAdmin, upload.single('image'), async (req, res, next) => {
     try {
-        let { name, email } = req.body;
+        let { name, email, phone } = req.body;
         let imageBuffer = req.file.buffer; // Get the image binary data
 
-        if (!(name && email && imageBuffer)) {
+        if (!(name && email && phone && imageBuffer)) {
             throw 'Faltaron algunos campos obligatorios { name, email, image }';
         }
         
@@ -361,7 +361,7 @@ router.post('/salesAdvisor', checkToken, validateActiveUser, permissionForAdmin,
         let imageUrl = imgHippoResponse.data.data.url; // Get the uploaded image URL
 
         // Create a new SalesAdvisor record with the image URL
-        let newSalesAdvisor = new SalesAdvisor({ name, email, imageUrl });
+        let newSalesAdvisor = new SalesAdvisor({ name, email, phone, imageUrl });
         await newSalesAdvisor.save();
 
         let response = new JSONResponse({ message: 'Asesor de ventas registrado exitosamente.' })
