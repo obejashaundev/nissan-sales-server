@@ -2,6 +2,10 @@ const {Schema, model} = require('mongoose');
 const customerSchema = new Schema({
     name: String,
     phone: String,
+    date: {
+        type: Date,
+        default: null
+    },
     location: {
         type: Schema.Types.ObjectId,
         ref: 'Location',
@@ -15,6 +19,11 @@ const customerSchema = new Schema({
     advertisingMedium: {
         type: Schema.Types.ObjectId,
         ref: 'AdvertisingMedium',
+        required: true
+    },
+    salesAdvisor: {
+        type: Schema.Types.ObjectId,
+        ref: 'SalesAdvisor',
         required: true
     },
     isActive: {

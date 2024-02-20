@@ -258,7 +258,7 @@ router.get('/carModels', checkToken, validateActiveUser, async (req, res, next) 
 
 router.get('/customers', checkToken, validateActiveUser, async (req, res, next) => {
     try {
-        let data = await Customer.find({ isActive: true, isRemoved: false })
+        let data = await Customer.find({ isActive: true, isRemoved: false }).populate('location').populate('carModel').populate('advertisingMedium').populate('salesAdvisor')
         let message = 'List of customers'
         let response = new JSONResponse({ data, message })
         res.json(response)
@@ -434,9 +434,12 @@ router.post('/customers', checkToken, validateActiveUser, async (req, res, next)
         if (customer) {
             let _customer = new Customer({ 
                 name: customer.name,
+                phone: customer.phone,
+                date: customer.date,
                 location: customer.location,
                 carModel: customer.carModel,
-                advertisingMedium: customer.advertisingMedium
+                advertisingMedium: customer.advertisingMedium,
+                salesAdvisor: customer.salesAdvisor
             })
             await _customer.save()
             let response = new JSONResponse({ message: 'El cliente se guardó satisfactoriamente.' })
